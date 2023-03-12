@@ -210,7 +210,7 @@ local function create_menu(opt)
     })
   end
 
-  nvim_buf_set_keymap(bufnr, 'n', 'q', '', {
+  nvim_buf_set_keymap(bufnr, 'n', opt.quit, '', {
     noremap = true,
     nowait = true,
     callback = function()
@@ -235,6 +235,7 @@ end
 function fb.setup(opt)
   fb.opt = vim.tbl_extend('force', {
     border = 'single',
+    quit = 'q',
   }, opt)
 end
 
