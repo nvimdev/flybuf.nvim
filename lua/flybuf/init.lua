@@ -2,11 +2,41 @@ local api, fn = vim.api, vim.fn
 local nvim_buf_set_keymap = api.nvim_buf_set_keymap
 local fb = {}
 
+local function fname_path(buf)
+  local sep = vim.loop.os_uname().version:match('Windows') and '\\' or '/'
+  local fname = api.nvim_buf_get_name(buf)
+  local parts = vim.split(fname, sep)
+  return table.concat(parts, sep, #parts - 1, #parts)
+end
+
 local function get_buffers()
-  local buffers = api.nvim_list_bufs()
-  buffers = vim.tbl_filter(function(buf)
+  local bufnrs = vim.tbl_filter(function(buf)
     return vim.bo[buf].buflisted
-  end, buffers)
+  end, api.nvim_list_bufs())
+
+  table.sort(bufnrs, function(a, b)
+    return fn.getbufinfo(a)[1].lastused > fn.getbufinfo(b)[1].lastused
+  end)
+
+  local buffers = {}
+
+  for _, bufnr in ipairs(bufnrs) do
+    local flag = bufnr == vim.fn.bufnr('') and '%' or (bufnr == vim.fn.bufnr('#') and '#' or ' ')
+
+    local element = {
+      bufnr = bufnr,
+      flag = flag,
+      name = fname_path(bufnr),
+    }
+
+    if flag == '#' or flag == '%' then
+      local idx = ((buffers[1] ~= nil and buffers[1].flag == '%') and 2 or 1)
+      table.insert(buffers, idx, element)
+    else
+      table.insert(buffers, element)
+    end
+  end
+
   return buffers
 end
 
@@ -129,12 +159,11 @@ local function create_menu(opt)
   local shortcut = hotkey()
   local keys = {}
 
-  for i, buf in ipairs(buffers) do
-    local name = fn.fnamemodify(api.nvim_buf_get_name(buf), ':t')
-    local icon, group = get_icon(buf)
+  for i, item in ipairs(buffers) do
+    local icon, group = get_icon(item.bufnr)
     local key = shortcut()
-    if #name ~= 0 then
-      lines[#lines + 1] = '[' .. key .. '] ' .. icon .. name
+    if #item.name ~= 0 then
+      lines[#lines + 1] = '[' .. key .. '] ' .. icon .. item.name
       hi[#hi + 1] = {
         { 0, 1, 'FlyBufBracket' },
         { 1, 2, 'FlyBufShortCut' },
@@ -153,7 +182,7 @@ local function create_menu(opt)
   lines = align_element(lines)
 
   for i, v in ipairs(lines) do
-    local msg, hi_scope = get_diagnsotic(buffers[i])
+    local msg, hi_scope = get_diagnsotic(buffers[i].bufnr)
     local start = #v
     lines[i] = v .. msg
     for _, item in ipairs(hi_scope) do
@@ -203,7 +232,7 @@ local function create_menu(opt)
       noremap = true,
       nowait = true,
       callback = function()
-        local buf = buffers[item[2]]
+        local buf = buffers[item[2]].bufnr
         api.nvim_win_close(winid, true)
         api.nvim_win_set_buf(0, buf)
       end,
