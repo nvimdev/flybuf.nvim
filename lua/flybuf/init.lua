@@ -154,6 +154,25 @@ local function create_ns()
   return all[name]
 end
 
+local function max_buf_len(buffers)
+  local max = {}
+  vim.tbl_map(function(item)
+    max[#max + 1] = #tostring(item.bufnr)
+  end, buffers)
+  table.sort(max)
+  return max[#max]
+end
+
+local function flattern_tbl(tbl, indexs)
+  local tmp = {}
+  for k, v in ipairs(tbl) do
+    if not vim.tbl_contains(indexs, k) then
+      tmp[#tmp + 1] = v
+    end
+  end
+  return tmp
+end
+
 local function create_menu(opt)
   local buffers = get_buffers()
   if #buffers == 0 then
@@ -165,13 +184,23 @@ local function create_menu(opt)
   local shortcut = hotkey(opt.hotkey)
   local keys = {}
   local ns = create_ns()
+  local max_len = max_buf_len(buffers)
 
   for i, item in ipairs(buffers) do
     local icon, group = get_icon(item.bufnr)
     local key = shortcut()
     if #item.name ~= 0 then
-      lines[#lines + 1] = '[' .. key .. '] ' .. item.bufnr .. ' ' .. icon .. item.name
       local num_len = #tostring(item.bufnr)
+      local need_fill = max_len - num_len
+      num_len = num_len + need_fill
+      lines[#lines + 1] = '['
+        .. key
+        .. '] '
+        .. item.bufnr
+        .. (' '):rep(need_fill)
+        .. ' '
+        .. icon
+        .. item.name
       local start = group and 4 + num_len + #icon or 4 + num_len
       hi[#hi + 1] = {
         { 0, 1, 'FlyBufBracket' },
@@ -262,7 +291,6 @@ local function create_menu(opt)
     callback = function()
       local index = api.nvim_win_get_cursor(winid)[1]
       local start, _end = unpack(hi[index][5])
-      print(vim.inspect(wipes))
       if not vim.tbl_contains(vim.tbl_keys(wipes), index) then
         local id = api.nvim_buf_set_extmark(bufnr, ns, index - 1, start, {
           end_col = _end,
@@ -287,16 +315,25 @@ local function create_menu(opt)
     nowait = true,
     callback = function()
       local content = api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      if not fb.wipes or #fb.wipes == 0 then
-        fb.wipes = { api.nvim_win_get_cursor(winid)[1] }
+      if not wipes or #wipes == 0 then
+        local row = api.nvim_win_get_cursor(winid)[1]
+        wipes[row] = true
       end
-      for _, index in ipairs(fb.wipes or {}) do
+
+      for index, _ in pairs(wipes or {}) do
         api.nvim_buf_call(buffers[index].bufnr, function()
           api.nvim_buf_delete(buffers[index].bufnr, { force = true })
         end)
         table.remove(content, index)
         table.remove(hi, index)
       end
+
+      local indexs = vim.tbl_keys(wipes)
+      buffers = flattern_tbl(buffers, indexs)
+      content = flattern_tbl(content, indexs)
+      hi = flattern_tbl(hi, indexs)
+
+      wipes = {}
       vim.bo[bufnr].modifiable = true
       if #content == 0 then
         api.nvim_win_close(winid, true)
@@ -306,7 +343,6 @@ local function create_menu(opt)
         gen_highlight()
         api.nvim_win_set_config(winid, { height = #content })
       end
-      fb.wipes = nil
     end,
   })
 
