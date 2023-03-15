@@ -57,11 +57,8 @@ local function align_element(content)
   return res
 end
 
-local function hotkey()
-  --not sure 26 is enough? anyone will open 27 buffers ?
-  local key = 'asdfghjklqwertyuiopzxcvbnm'
+local function hotkey(key)
   local tbl = {}
-  ---@diagnostic disable-next-line: discard-returns
   key:gsub('.', function(c)
     tbl[#tbl + 1] = c
   end)
@@ -148,6 +145,15 @@ local function max_content_width(content)
   return max[#max]
 end
 
+local function create_ns()
+  local name = 'FlyBuf'
+  local all = api.nvim_get_namespaces()
+  if not all[name] then
+    return api.nvim_create_namespace(name)
+  end
+  return all[name]
+end
+
 local function create_menu(opt)
   local buffers = get_buffers()
   if #buffers == 0 then
@@ -156,21 +162,25 @@ local function create_menu(opt)
 
   local lines = {}
   local hi = {}
-  local shortcut = hotkey()
+  local shortcut = hotkey(opt.hotkey)
   local keys = {}
+  local ns = create_ns()
 
   for i, item in ipairs(buffers) do
     local icon, group = get_icon(item.bufnr)
     local key = shortcut()
     if #item.name ~= 0 then
-      lines[#lines + 1] = '[' .. key .. '] ' .. icon .. item.name
+      lines[#lines + 1] = '[' .. key .. '] ' .. item.bufnr .. ' ' .. icon .. item.name
+      local num_len = #tostring(item.bufnr)
+      local start = group and 4 + num_len + #icon or 4 + num_len
       hi[#hi + 1] = {
         { 0, 1, 'FlyBufBracket' },
         { 1, 2, 'FlyBufShortCut' },
         { 2, 3, 'FlyBufBracket' },
-        group and { 3, 4 + #icon, group } or nil,
-        { 4 + #icon, -1, 'FlyBufName' },
+        { 4, 4 + num_len, 'FlyBufNum' },
+        { start + 1, start + 1 + #item.name, 'FlyBufName' },
       }
+      table.insert(hi[#hi], group and { 4 + num_len, 4 + num_len + #icon, group } or nil)
       keys[#keys + 1] = { key, i }
     end
   end
@@ -212,7 +222,9 @@ local function create_menu(opt)
 
   local bufnr = api.nvim_create_buf(false, false)
   vim.bo[bufnr].bufhidden = 'wipe'
+  vim.bo[bufnr].buftype = 'nofile'
   local winid = api.nvim_open_win(bufnr, true, float_opt)
+  api.nvim_win_set_hl_ns(winid, ns)
   api.nvim_set_option_value('winhl', 'Normal:FlyBufNormal,FloatBorder:FlyBufBorder', {
     scope = 'local',
     win = winid,
@@ -221,11 +233,15 @@ local function create_menu(opt)
   api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
   vim.bo[bufnr].modifiable = false
 
-  for i, item in ipairs(hi) do
-    for _, v in ipairs(item) do
-      api.nvim_buf_add_highlight(bufnr, 0, v[3], i - 1, v[1], v[2])
+  local function gen_highlight()
+    for i, item in ipairs(hi) do
+      for _, v in ipairs(item) do
+        api.nvim_buf_add_highlight(bufnr, ns, v[3], i - 1, v[1], v[2])
+      end
     end
   end
+
+  gen_highlight()
 
   for _, item in ipairs(keys) do
     nvim_buf_set_keymap(bufnr, 'n', item[1], '', {
@@ -238,6 +254,61 @@ local function create_menu(opt)
       end,
     })
   end
+
+  local wipes = {}
+  nvim_buf_set_keymap(bufnr, 'n', opt.mark, '', {
+    noremap = true,
+    nowait = true,
+    callback = function()
+      local index = api.nvim_win_get_cursor(winid)[1]
+      local start, _end = unpack(hi[index][5])
+      print(vim.inspect(wipes))
+      if not vim.tbl_contains(vim.tbl_keys(wipes), index) then
+        local id = api.nvim_buf_set_extmark(bufnr, ns, index - 1, start, {
+          end_col = _end,
+          hl_group = 'FlyBufSelect',
+        })
+        wipes[index] = id
+      else
+        local id = wipes[index]
+        api.nvim_buf_del_extmark(bufnr, ns, id)
+        api.nvim_buf_set_extmark(bufnr, ns, index - 1, start, {
+          end_col = _end,
+          hl_group = 'FlyBufName',
+        })
+        wipes[index] = nil
+      end
+    end,
+  })
+
+  --delele buffers by mark
+  nvim_buf_set_keymap(bufnr, 'n', opt.delete, '', {
+    noremap = true,
+    nowait = true,
+    callback = function()
+      local content = api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      if not fb.wipes or #fb.wipes == 0 then
+        fb.wipes = { api.nvim_win_get_cursor(winid)[1] }
+      end
+      for _, index in ipairs(fb.wipes or {}) do
+        api.nvim_buf_call(buffers[index].bufnr, function()
+          api.nvim_buf_delete(buffers[index].bufnr, { force = true })
+        end)
+        table.remove(content, index)
+        table.remove(hi, index)
+      end
+      vim.bo[bufnr].modifiable = true
+      if #content == 0 then
+        api.nvim_win_close(winid, true)
+      else
+        api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
+        vim.bo[bufnr].modifiable = false
+        gen_highlight()
+        api.nvim_win_set_config(winid, { height = #content })
+      end
+      fb.wipes = nil
+    end,
+  })
 
   nvim_buf_set_keymap(bufnr, 'n', opt.quit, '', {
     noremap = true,
@@ -254,6 +325,13 @@ local function create_menu(opt)
       api.nvim_win_set_cursor(winid, { pos[1], 1 })
     end,
   })
+
+  api.nvim_create_autocmd('BufDelete', {
+    buffer = bufnr,
+    callback = function()
+      api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+    end,
+  })
   return winid
 end
 
@@ -263,8 +341,11 @@ end
 
 function fb.setup(opt)
   fb.opt = vim.tbl_extend('force', {
+    hotkey = 'asdfghwertyuiopzcvbnm',
     border = 'single',
     quit = 'q',
+    mark = 'l',
+    delete = 'x',
   }, opt)
 end
 
