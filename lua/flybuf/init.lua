@@ -78,7 +78,7 @@ local function get_icon(bufnr)
   if not ok then
     return ''
   end
-  local icon, hl = devicon.get_icon_by_filetype(vim.bo[bufnr].filetype)
+  local icon, hl = devicon.get_icon_by_filetype(vim.bo[bufnr].filetype, { default = true})
   return icon .. ' ', hl
 end
 
