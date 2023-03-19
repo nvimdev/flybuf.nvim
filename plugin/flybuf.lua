@@ -6,7 +6,7 @@ end
 vim.g.loaded_flybuf = 1
 
 nvim_create_user_command('FlyBuf', function()
-  require('flybuf').flybuf()
+  require('flybuf').toggle()
 end, {})
 
 nvim_set_hl(0, 'FlyBufNormal', {

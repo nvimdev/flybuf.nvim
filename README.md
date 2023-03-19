@@ -42,7 +42,7 @@ require('lazy').setup({
 
 ## Usage
 
-- press `FlyBuf` command then press hotkey open buffer
+- press `FlyBuf` command to toggle FlyBuf win then press hotkey open buffer.
 - use mark keymap to mark the buffers then use delete key to delete
 - if want delet the buffer which cursor in just press delete key
 

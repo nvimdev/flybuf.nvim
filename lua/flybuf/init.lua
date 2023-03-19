@@ -371,8 +371,13 @@ local function create_menu(opt)
   return winid
 end
 
-function fb.flybuf()
-  create_menu(fb.opt)
+function fb.toggle()
+  if fb.winid and api.nvim_win_is_valid(fb.winid) then
+    api.nvim_win_close(fb.winid, true)
+    fb.winid = nil
+    return
+  end
+  fb.winid = create_menu(fb.opt)
 end
 
 function fb.setup(opt)
