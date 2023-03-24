@@ -3,8 +3,11 @@ local nvim_buf_set_keymap = api.nvim_buf_set_keymap
 local fb = {}
 
 local function fname_path(buf)
-  local sep = vim.loop.os_uname().version:match('Windows') and '\\' or '/'
+  local sep = (not vim.opt.shellslash._value and vim.loop.os_uname().version:match('Windows')) and '\\' or '/'
   local fname = api.nvim_buf_get_name(buf)
+  if fname == '' then
+    return '[No Name]'
+  end
   local parts = vim.split(fname, sep)
   return table.concat(parts, sep, #parts - 1, #parts)
 end
