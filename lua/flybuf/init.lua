@@ -3,7 +3,10 @@ local nvim_buf_set_keymap = api.nvim_buf_set_keymap
 local fb = {}
 
 local function fname_path(buf)
-  local sep = (not vim.opt.shellslash._value and vim.loop.os_uname().version:match('Windows')) and '\\' or '/'
+  local sep = vim.loop.os_uname().version:match('Windows') and '\\' or '/'
+  if vim.fn.has('shellslash') == 1 then
+    sep = '\\'
+  end
   local fname = api.nvim_buf_get_name(buf)
   if fname == '' then
     return '[No Name]'
@@ -81,7 +84,7 @@ local function get_icon(bufnr)
   if not ok then
     return ''
   end
-  local icon, hl = devicon.get_icon_by_filetype(vim.bo[bufnr].filetype, { default = true})
+  local icon, hl = devicon.get_icon_by_filetype(vim.bo[bufnr].filetype, { default = true })
   return icon .. ' ', hl
 end
 
